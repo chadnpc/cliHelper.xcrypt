@@ -5,6 +5,7 @@ using namespace System.Web
 using namespace System.Text
 using namespace System.Net.Http
 using namespace System.Security
+using namespace System.Reflection
 using namespace System.Runtime.InteropServices
 
 #Requires -PSEdition Core
@@ -209,6 +210,8 @@ class cPsObject : PsObject {
 #   [+] This file is over 4000 lines of code (All in One), so use regions code folding if your editor supports it.
 class xcrypt {
   static hidden [string] $caller
+  static hidden [MethodInfo[]] $Methods = ([xcrypt].GetMethods().Where({ $_.IsStatic -and !$_.IsHideBySig }))
+  static hidden [Type[]] $ReturnTypes = ([xcrypt]::Methods.ReturnType | Sort-Object -Unique Name)
   [ValidateNotNull()][byte[]]hidden $_salt
   [ValidateNotNull()][byte[]]hidden $_bytes
   static [ValidateNotNull()][EncryptionScope] $EncryptionScope
