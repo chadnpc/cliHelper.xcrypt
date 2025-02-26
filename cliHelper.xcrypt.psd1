@@ -51,7 +51,6 @@
 
   # Modules that must be imported into the global environment prior to importing this module
   RequiredModules       = @(
-    "cliHelper.errorman",
     "cliHelper.xconvert"
   )
 
@@ -94,14 +93,13 @@
   # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
   PrivateData           = @{
     PSData = @{
-      Tags                     = 'PowerShell', 'alain', 'AesGcM'
-      LicenseUri               = 'https://alain.mit-license.org/'
-      ProjectUri               = 'https://github.com/chadnpc/cliHelper.xcrypt'
-      IconUri                  = 'https://github.com/user-attachments/assets/2fd8be26-9347-4ade-9e28-1b98fc1084cf'
-      ReleaseNotes             = '
+      Tags         = 'PowerShell', 'alain', 'AesGcM'
+      LicenseUri   = 'https://alain.mit-license.org/'
+      ProjectUri   = 'https://github.com/chadnpc/cliHelper.xcrypt'
+      IconUri      = 'https://github.com/user-attachments/assets/2fd8be26-9347-4ade-9e28-1b98fc1084cf'
+      ReleaseNotes = '
 <ReleaseNotes>
 '
-      RequireLicenseAcceptance = $false
     }
   }
   # HelpInfo URI of this module

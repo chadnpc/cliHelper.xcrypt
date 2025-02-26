@@ -1,7 +1,7 @@
 ﻿
 #!/usr/bin/env pwsh
 # .SYNOPSIS
-#   cliHelper.xcrypt buildScript v0.1.4
+#   cliHelper.xcrypt buildScript v0.1.5
 # .DESCRIPTION
 #   A custom build script for the module cliHelper.xcrypt
 # .LINK
