@@ -1,11 +1,11 @@
 ﻿
 @{
   ModuleName    = 'cliHelper.xcrypt'
-  ModuleVersion = [version]'0.1.3'
+  ModuleVersion = [version]'0.1.4'
   ReleaseNotes  = '# Release Notes
 
 - Version_1.0
-- Functions ...
+- More Functions ...
 - Optimizations
 '
 }

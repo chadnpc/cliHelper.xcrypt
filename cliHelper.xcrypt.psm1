@@ -9,6 +9,7 @@ using namespace System.Reflection
 using namespace System.Runtime.InteropServices
 
 #Requires -PSEdition Core
+#Requires -Modules cliHelper.errorman, cliHelper.xconvert
 
 #region    enums
 

@@ -3,8 +3,10 @@ function Invoke-xcrypt {
   #  Creates a custom xcrypt object and Invokes methods on it.
   # .EXAMPLE
   #  "https://github.com" | xcrypt IsValidUrl
-  #.NOTES
-  # If you want more control you can directly use the [xcrypt] class :)
+  # .NOTES
+  #  If you want more control you can directly use the [xcrypt] class :)
+  #.LINK
+  #  https://github.com/chadnpc/cliHelper.xcrypt/blob/main/Public/Invoke-xcrypt.ps1
   [CmdletBinding()]
   [Alias('xcrypt')]
   [OutputType({ [xcrypt]::ReturnTypes })]
