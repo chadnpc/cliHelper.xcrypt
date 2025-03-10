@@ -314,10 +314,16 @@ class xcrypt {
     [void][RNGCryptoServiceProvider]::new().GetBytes($entropy)
     return $entropy;
   }
-  # Uses a cryptographic hash function (SHA-256) to generate a unique machine ID
-  static hidden [string] GetRandomSTR([string]$InputSample, [int]$iterations, [int]$minLength, [int]$maxLength) {
+  static [string] GetRandomSTR([string]$InputSample, [int]$Length) {
+    return [xcrypt]::GetRandomSTR($InputSample, 3, $Length, $Length)
+  }
+  static [string] GetRandomSTR([string]$InputSample, [int]$iterations, [int]$Length) {
+    return [xcrypt]::GetRandomSTR($InputSample, $iterations, $Length, $Length)
+  }
+  static [string] GetRandomSTR([string]$InputSample, [int]$iterations, [int]$minLength, [int]$maxLength) {
+    # Uses a cryptographic hash function (SHA-256) to generate a unique machine ID
     if ($maxLength -lt $minLength) { throw [ArgumentOutOfRangeException]::new('MinLength', "'MaxLength' cannot be less than 'MinLength'") }
-    if ($iterations -le 0) { Write-Warning 'Negative and Zero Iterations are NOT Possible!'; return [string]::Empty }
+    if ($iterations -le 0) { throw [InvalidOperationException]::new('Negative and Zero Iterations are NOT Possible!') }
     [char[]]$chars = [char[]]::new($InputSample.Length);
     $chars = $InputSample.ToCharArray();
     $Keys = [Collections.Generic.List[string]]::new();
@@ -539,6 +545,21 @@ class xcrypt {
     [ValidateNotNullOrEmpty()][DirectoryInfo]$Path = $Path
     $nF = @(); $p = $Path; while (!$p.Exists) { $nF += $p; $p = $p.Parent }
     [Array]::Reverse($nF); $nF | ForEach-Object { $_.Create(); Write-Verbose "Created $_" }
+  }
+  [PSCustomObject] static Get_Ip_Info() {
+    $i = $null
+    try {
+      $i = $(& ([scriptblock]::Create($((Invoke-RestMethod -Verbose:$false -ea Ignore -SkipHttpErrorCheck -Method Get https://api.github.com/gists/d1985ebe22fe07cc191c9458b3a2bdbc).files.'IpInfo.ps1'.content) + ';[Ipinfo]::getInfo()')))
+    } catch {
+      $i = [PSCustomObject]@{
+        country_name = "US"
+        location     = [PSCustomObject]@{
+          geoname_id = "Ohio"
+        }
+        city         = "Florida"
+      }
+    }
+    return $i
   }
   [securestring] static GetPassword() {
     $ThrowOnFailure = $true
@@ -1021,7 +1042,7 @@ class FileMonitor {
     return [FileMonitor]::monitorFile($File, { Write-Host "[+] File monitor Completed" -ForegroundColor Green })
   }
   static [FileSystemWatcher] MonitorFile([string]$File, [scriptblock]$Action) {
-    [ValidateNotNull()][IO.FileInfo]$File = [IO.FileInfo][xcrypt]::GetUnResolvedPath($File)
+    [ValidateNotNull()][FileInfo]$File = [IO.FileInfo][xcrypt]::GetUnResolvedPath($File)
     if (![IO.File]::Exists($File.FullName)) {
       throw "The file does not exist"
     }
@@ -1099,7 +1120,7 @@ class FileMonitor {
     }
     return $summ.Trim()
   }
-  static [bool] IsFileOpenInVim([IO.FileInfo]$file) {
+  static [bool] IsFileOpenInVim([FileInfo]$file) {
     $res = $null; $logvar = Get-Variable -Name ([FileMonitor]::LogvariableName) -Scope Global;
     $fileName = Split-Path -Path $File.FullName -Leaf;
     $res = $false; $_log_msg = @(); $processes = Get-Process -Name "nvim*", "vim*" -ErrorAction SilentlyContinue
@@ -1143,7 +1164,7 @@ class SecretStore {
       [SecretStore]::DataPath = [IO.Path]::Combine([xcrypt]::Get_dataPath('ArgonCage', 'Data'), 'secrets')
     }
     $this.psobject.Properties.Add([psscriptproperty]::new('File', {
-          return [IO.FileInfo]::new([IO.Path]::Combine([SecretStore]::DataPath, $this.Name))
+          return [FileInfo]::new([IO.Path]::Combine([SecretStore]::DataPath, $this.Name))
         }, {
           param($value)
           if ($value -is [IO.FileInfo]) {
@@ -1662,7 +1683,7 @@ class VaultClient {
     if ($null -eq [VaultClient]::releases) { [VaultClient]::releases = Invoke-WebRequest "https://releases.hashicorp.com/vault/" -Verbose:$false }
     [string]$latest_dl = $(Invoke-WebRequest ("https://releases.hashicorp.com" + ([VaultClient]::releases.Links | Where-Object { $_.href -like "*/$version/*" } | Select-Object -ExpandProperty href)) -Verbose:$false).Links.href | Where-Object { $_ -like "*windows_386*" }
     $p = Get-Variable progressPreference -ValueOnly; $progressPreference = "SilentlyContinue"
-    $Outfile = [IO.FileInfo]::new([xcrypt]::GetUnResolvedPath("vault_$version.zip"));
+    $Outfile = [FileInfo]::new([xcrypt]::GetUnResolvedPath("vault_$version.zip"));
     try {
       $should_download = $true
       if ($Outfile.Exists()) {
@@ -2246,20 +2267,20 @@ class AesGCM : xcrypt {
     }
     return $_bytes
   }
-  static [void] Encrypt([IO.FileInfo]$File) {
+  static [void] Encrypt([FileInfo]$File) {
     [AesGCM]::Encrypt($File, [AesGCM]::GetPassword());
   }
-  static [void] Encrypt([IO.FileInfo]$File, [securestring]$Password) {
+  static [void] Encrypt([FileInfo]$File, [securestring]$Password) {
     [AesGCM]::Encrypt($File, $Password, $null);
   }
-  static [void] Encrypt([IO.FileInfo]$File, [securestring]$Password, [string]$OutPath) {
+  static [void] Encrypt([FileInfo]$File, [securestring]$Password, [string]$OutPath) {
     [AesGCM]::Encrypt($File, $password, $OutPath, 1, $null);
   }
-  static [void] Encrypt([IO.FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations) {
+  static [void] Encrypt([FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations) {
     [AesGCM]::Encrypt($File, $password, $OutPath, $iterations, $null);
   }
-  static [void] Encrypt([IO.FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations, [string]$Compression) {
-    [ValidateNotNullOrEmpty()][IO.FileInfo]$File = [AesGCM]::GetResolvedPath($File.FullName); if ([string]::IsNullOrWhiteSpace($OutPath)) { $OutPath = $File.FullName }
+  static [void] Encrypt([FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations, [string]$Compression) {
+    [ValidateNotNullOrEmpty()][FileInfo]$File = [AesGCM]::GetResolvedPath($File.FullName); if ([string]::IsNullOrWhiteSpace($OutPath)) { $OutPath = $File.FullName }
     [ValidateNotNullOrEmpty()][string]$OutPath = [AesGCM]::GetUnResolvedPath($OutPath);
     if (![string]::IsNullOrWhiteSpace($Compression)) { [AesGCM]::ValidateCompression($Compression) }
     $streamReader = [FileStream]::new($File.FullName, [FileMode]::Open)
@@ -2337,20 +2358,20 @@ class AesGCM : xcrypt {
     }
     return $_bytes
   }
-  static [void] Decrypt([IO.FileInfo]$File) {
+  static [void] Decrypt([FileInfo]$File) {
     [AesGCM]::Decrypt($File, [AesGCM]::GetPassword());
   }
-  static [void] Decrypt([IO.FileInfo]$File, [securestring]$password) {
+  static [void] Decrypt([FileInfo]$File, [securestring]$password) {
     [AesGCM]::Decrypt($File, $password, $null);
   }
-  static [void] Decrypt([IO.FileInfo]$File, [securestring]$Password, [string]$OutPath) {
+  static [void] Decrypt([FileInfo]$File, [securestring]$Password, [string]$OutPath) {
     [AesGCM]::Decrypt($File, $password, $OutPath, 1, $null);
   }
-  static [void] Decrypt([IO.FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations) {
+  static [void] Decrypt([FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations) {
     [AesGCM]::Decrypt($File, $password, $OutPath, $iterations, $null);
   }
-  static [void] Decrypt([IO.FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations, [string]$Compression) {
-    [ValidateNotNullOrEmpty()][IO.FileInfo]$File = [AesGCM]::GetResolvedPath($File.FullName); if ([string]::IsNullOrWhiteSpace($OutPath)) { $OutPath = $File.FullName }
+  static [void] Decrypt([FileInfo]$File, [securestring]$Password, [string]$OutPath, [int]$iterations, [string]$Compression) {
+    [ValidateNotNullOrEmpty()][FileInfo]$File = [AesGCM]::GetResolvedPath($File.FullName); if ([string]::IsNullOrWhiteSpace($OutPath)) { $OutPath = $File.FullName }
     [ValidateNotNullOrEmpty()][string]$OutPath = [AesGCM]::GetUnResolvedPath($OutPath);
     if (![string]::IsNullOrWhiteSpace($Compression)) { [AesGCM]::ValidateCompression($Compression) }
     $streamReader = [FileStream]::new($File.FullName, [FileMode]::Open)
@@ -2633,50 +2654,48 @@ class RSA : xcrypt {
 #endregion RSA
 
 #region    X509
-# .SYNOPSIS
-#     X509Certificate2 class
-# .DESCRIPTION
-#     A class for basic X509Certificate2 functions without relying on huge PKI cmdlets
-#     because the PKI module is not pre-installed on all OSs (Ex: On Arch Linux).
-# .EXAMPLE
-#     . ([scriptblock]::Create($((Invoke-RestMethod -Method Get https://api.github.com/gists/d8f277f1d830882c4927c144a99b70cd).files.'X509CertHelper.ps1'.content)));
-#     $Certificate = [X509CertHelper]::CreateSelfSignedCertificate('CN=TestCert');
-
-#     This examples how to quickly create an X509Certificate2 using X509CertHelper class.
-# .LINK
-#     https://gist.github.com/alainQtec/d8f277f1d830882c4927c144a99b70cd
 class X509 : xcrypt {
+  static [X509Certificate2] CreateCertificate([string]$subject) {
+    return [X509]::CreateCertificate($subject, [ECCurveName]::nistP521);
+  }
   static [X509Certificate2] CreateCertificate([string]$Subject, [string]$KeyUsage) {
     $upn = if ([bool](Get-Command git -ErrorAction SilentlyContinue)) { git config user.email } else { 'work@contoso.com' }
     return [X509]::CreateCertificate($Subject, $KeyUsage, $upn)
   }
+  static [X509Certificate2] CreateCertificate([string]$subject, [ECCurveName]$curveName) {
+    [void][X509]::IsValidDistinguishedName($subject, $true);
+    $ecdsa = [ECDsa]::Create();
+    $ecdsa.GenerateKey([ECCurve]::CreateFromFriendlyName("$curveName"));
+    $certRequest = [X509]::GetCertificateRequest($subject, $ecdsa, [HashAlgorithmName]::SHA256, 2048)
+    return [X509]::CreateCertificate($certRequest, [FileInfo]::New([char]8) , [securestring]::New(), [DateTimeOffset]::Now.AddDays(-1).DateTime, [DateTimeOffset]::Now.AddYears(10).DateTime);
+  }
   static [X509Certificate2] CreateCertificate([string]$Subject, [string]$KeyUsage, [string]$upn) {
-    $pin = [xcrypt]::GetRandomSTR('01233456789', 3, 4, 4) | xconvert ToSecurestring
+    $pin = [xcrypt]::GetRandomSTR('01233456789', 4) | xconvert ToSecurestring
     $Extentions = @("2.5.29.17={text}upn=$upn")
     return [X509]::CreateCertificate($Subject, 2048, 60, "Cert:\CurrentUser\My", $Pin, 'ExportableEncrypted', 'Protect', $KeyUsage, $Extentions, $true)
   }
   static [X509Certificate2] CreateCertificate([string]$Subject, [string]$KeyUsage, [string[]]$Extentions) {
-    $pin = [xcrypt]::GetRandomSTR('01233456789', 3, 4, 4) | xconvert ToSecurestring
+    $pin = [xcrypt]::GetRandomSTR('01233456789', 4) | xconvert ToSecurestring
     return [X509]::CreateCertificate($Subject, 2048, 60, "Cert:\CurrentUser\My", $Pin, 'ExportableEncrypted', 'Protect', $KeyUsage, $Extentions, $true)
   }
   static [X509Certificate2] CreateCertificate([string]$Subject, [string]$upn, [securestring]$pin, [string]$KeyUsage) {
     $Extentions = @("2.5.29.17={text}upn=$upn")
     return [X509]::CreateCertificate($Subject, 2048, 60, "Cert:\CurrentUser\My", $Pin, 'ExportableEncrypted', 'Protect', $KeyUsage, $Extentions, $true)
   }
-  static [X509Certificate2] CreateCertificate([string]$Subject, [int]$keySizeInBits = 2048, [int]$ValidForInDays = 365, [string]$StoreLocation, [securestring]$Pin, [string]$KeyExportPolicy, [string]$KeyProtection, [string]$KeyUsage, [string[]]$Extentions, [bool]$IsCritical) {
+  static [X509Certificate2] CreateCertificate([string]$Subject, [int]$keySizeInBits = 2048, [int]$ValidForInDays = 365, [string]$StoreLocation, [securestring]$Pin, [string]$KeyExportPolicy, [KeyProtection]$KeyProtection, [string]$KeyUsage, [string[]]$Extentions, [bool]$IsCritical) {
     if (!($KeyExportPolicy -as [KeyExportPolicy] -is 'KeyExportPolicy')) { throw [InvalidArgumentException]::New('[Microsoft.CertificateServices.Commands.KeyExportPolicy]$KeyExportPolicy') }
-    if (!($KeyProtection -as [KeyProtection] -is 'KeyProtection')) { throw [InvalidArgumentException]::New('[Microsoft.CertificateServices.Commands.KeyProtection]$KeyProtection') }
-    if (!($keyUsage -as [KeyUsage] -is 'KeyUsage')) { throw [InvalidArgumentException]::New('[X509KeyUsageFlags]$KeyUsage') }
-    if (![bool]("Microsoft.CertificateServices.Commands.KeyExportPolicy" -as [Type])) {
+    if (!($KeyProtection -as [KeyProtection] -is 'KeyProtection')) { throw [InvalidArgumentException]::New("$KeyProtection is not a valid [Microsoft.CertificateServices.Commands.KeyProtection]. See [enum]::GetNames[KeyProtection]() for valid values") }
+    if (!($keyUsage -as [KeyUsage] -is 'KeyUsage')) { throw [InvalidArgumentException]::New("$KeyUsage is not a valid X509KeyUsageFlag. See [enum]::GetNames[KeyUsage]() for valid values") }
+    if (![bool]("Microsoft.CertificateServices.Commands.KeyExportPolicy" -as [Type]) -and [xcrypt]::Get_Host_Os() -eq "Windows") {
       Write-Verbose "[+] Load all necessary assemblies." # By Creating a dumy cert then remove it. This loads all necessary assemblies to create certificates; It worked for me!
       $DummyName = 'dummy-' + [Guid]::NewGuid().Guid; $DummyCert = New-SelfSignedCertificate -Type Custom -Subject "CN=$DummyName" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.2", "2.5.29.17={text}upn=dummy@contoso.com") -KeyExportPolicy NonExportable -KeyUsage None -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\CurrentUser\My";
       $DummyCert.Dispose(); Get-ChildItem "Cert:\CurrentUser\My" | Where-Object { $_.subject -eq "CN=$DummyName" } | Remove-Item
     }
-    $key = [RSA]::Create($keySizeInBits)
+    $key = [System.Security.Cryptography.RSA]::Create($keySizeInBits)
     # Create a regular expression to match the DN (distinguishedName) format. ie: CN=CommonName,OU=OrganizationalUnit,O=Organization,L=Locality,S=State,C=Country
     $dnFormat = "^CN=.*,OU=.*,O=.*,L=.*,S=.*,C=.*"; # Ex: $subjN = "CN=My Cert Subject,OU=IT,O=MyCompany,L=MyCity,S=MyState,C=MyCountry"
     if ($subject -notmatch $dnFormat) {
-      $Ip_Info = $(& ([scriptblock]::Create($((Invoke-RestMethod -Verbose:$false -Method Get https://api.github.com/gists/d1985ebe22fe07cc191c9458b3a2bdbc).files.'IpInfo.ps1'.content) + ';[Ipinfo]::getInfo()')))
+      $Ip_Info = [X509]::Get_Ip_Info()
       $subject = "CN=$subject,OU=,O=,L=,S=,C=";
       $subject = $subject -replace "O=,", "O=Contoso,";
       $subject = $subject -replace "OU=,", "OU=$keyUsage,";
@@ -2684,9 +2703,9 @@ class X509 : xcrypt {
       $subject = $subject -replace "L=,", "L=$($Ip_Info.location.geoname_id),";
       $subject = $subject -replace "S=,", "S=$($Ip_Info.city),"
     }
-    # Set the OID (Object Identifier) for the subjectName object
-    $subjectName = [X500DistinguishedName]::new($Subject); $subjectName.Oid = [Oid]::new("1.2.840.10045.3.1.7");
-    $certRequest = [certificaterequest]::new($subjectName, $key, [HashAlgorithmName]::SHA256, [RSASignaturePadding]::Pkcs1);
+    # Set the OID (Object Identifier) for the subject name
+    $distshdName = [X500DistinguishedName]::new($Subject); $distshdName.Oid = [Oid]::new("1.2.840.10045.3.1.7");
+    $certRequest = [certificaterequest]::new($distshdName, $key, [HashAlgorithmName]::SHA256, [RSASignaturePadding]::Pkcs1);
     # Create an X509KeyUsageFlags object
     $X509KeyUsageFlags = [X509KeyUsageFlags]::None
     $X509KeyUsageFlags = $X509KeyUsageFlags -bor ([X509KeyUsageFlags]::$KeyUsage);
@@ -2702,57 +2721,58 @@ class X509 : xcrypt {
         throw [InvalidArgumentException]::New("$ext")
       }
     }
-    Write-Verbose "[+] Creating SelfSigned Certificate ..."
-    $cert = [X509Certificate2]$certRequest.CreateSelfSigned($notBefore, $notAfter);
+    $xsig = [X509Certificate2]$certRequest.CreateSelfSigned($notBefore, $notAfter);
     # Create an X509KeyStorageFlags object and set the KeyProtection value
-    $x509ContentType, $x509KeyStorageFlags = switch ([string]::Join(':', $KeyExportPolicy, $KeyUsage, $KeyProtection)) {
-      'NonExportable:None:None' { ('Cert', 'UserKeySet'); break }
-      'NonExportable:DataEncipherment:Protect' { ('SerializedCertPfx', 'UserProtected'); break }
-      'ExportableEncrypted:DataEncipherment:Protect' { ('Pkcs12', 'Exportable'); break }
-      'ExportableEncrypted:DataEncipherment:ProtectHigh' { ('Pkcs12', 'UserProtected'); break }
-      'ExportableEncrypted:KeyEncipherment:Protect' { ('Pkcs12', 'Exportable'); break }
-      'ExportableEncrypted:CertSign:Protect' { ('SerializedStore', 'EphemeralKeySet'); break }
-      'Exportable:DataEncipherment:None' { ('Pkcs12', 'Exportable'); break }
-      'Exportable:DataEncipherment:Protect' { ('Pkcs12', 'UserProtected'); break }
-      'Exportable:DataEncipherment:ProtectHigh' { ('Pkcs12', 'EphemeralKeySet'); break }
-      'Exportable:KeyEncipherment:Protect' { ('SerializedCertPfx', 'Exportable'); break }
-      'Exportable:KeyEncipherment:ProtectHigh' { ('SerializedCertPfx', 'UserProtected'); break }
-      'Exportable:KeyAgreement:ProtectFingerPrint' { ('Pkcs7', 'MachineKeySet'); break }
-      'ExportableEncrypted:DecipherOnly:ProtectFingerPrint' { ('Authenticode', 'PersistKeySet'); break }
-      'NonExportable:CRLSign:None' { ('SerializedStore', 'UserKeySet'); break }
-      'NonExportable:NonRepudiation:Protect' { ('Pkcs7', 'UserProtected'); break }
-      'ExportableEncrypted:DigitalSignature:ProtectHigh' { ('SerializedStore', 'EphemeralKeySet'); break }
-      'Exportable:EncipherOnly:ProtectFingerPrint' { ('Pkcs7', 'UserProtected'); break }
-      'Default' { ('Unknown', 'DefaultKeySet') }
-    }
-    $x509ContentType = [X509ContentType]::$x509ContentType
+    $t, $f = @{
+      'NonExportable:None:None'                             = ('Cert', 'UserKeySet')
+      'NonExportable:DataEncipherment:Protect'              = ('SerializedCertPfx', 'UserProtected')
+      'ExportableEncrypted:DataEncipherment:Protect'        = ('Pkcs12', 'Exportable')
+      'ExportableEncrypted:DataEncipherment:ProtectHigh'    = ('Pkcs12', 'UserProtected')
+      'ExportableEncrypted:KeyEncipherment:Protect'         = ('Pkcs12', 'Exportable')
+      'ExportableEncrypted:CertSign:Protect'                = ('SerializedStore', 'EphemeralKeySet')
+      'Exportable:DataEncipherment:None'                    = ('Pkcs12', 'Exportable')
+      'Exportable:DataEncipherment:Protect'                 = ('Pkcs12', 'UserProtected')
+      'Exportable:DataEncipherment:ProtectHigh'             = ('Pkcs12', 'EphemeralKeySet')
+      'Exportable:KeyEncipherment:Protect'                  = ('SerializedCertPfx', 'Exportable')
+      'Exportable:KeyEncipherment:ProtectHigh'              = ('SerializedCertPfx', 'UserProtected')
+      'Exportable:KeyAgreement:ProtectFingerPrint'          = ('Pkcs7', 'MachineKeySet')
+      'ExportableEncrypted:DecipherOnly:ProtectFingerPrint' = ('Authenticode', 'PersistKeySet')
+      'NonExportable:CRLSign:None'                          = ('SerializedStore', 'UserKeySet')
+      'NonExportable:NonRepudiation:Protect'                = ('Pkcs7', 'UserProtected')
+      'ExportableEncrypted:DigitalSignature:ProtectHigh'    = ('SerializedStore', 'EphemeralKeySet')
+      'Exportable:EncipherOnly:ProtectFingerPrint'          = ('Pkcs7', 'UserProtected')
+    }[[string]::Join(':', $KeyExportPolicy, $KeyUsage, $KeyProtection)]
+    $x509ContentType, $x509KeyStorageFlags = ($t -and $f) ? ($t, $f) : ('Cert', 'DefaultKeySet')
+    [ValidateNotNullOrEmpty()][X509ContentType]$x509ContentType = [X509ContentType]::$x509ContentType
     $x509KeyStorageFlags = [X509KeyStorageFlags]::$x509KeyStorageFlags
     # if ($null -eq $Pin) { [securestring]$Pin = Read-Host -Prompt "New Certificate PIN" -AsSecureString }
-    [byte[]]$certData = $cert.Export($x509ContentType, $Pin);
-    # Import the certificate from the byte array and return the imported certificate
-    [void]$cert.Import($certData, $Pin, $x509KeyStorageFlags);
-    # Add the certificate to the personal store
-    $store = [X509Store]::new([StoreLocation]::CurrentUser)
+    [byte[]]$certData = $xsig.Export($x509ContentType, $Pin);
+    $cert = [X509Certificate2]::new($certData, $Pin, $x509KeyStorageFlags)
+    # TODO : test if this gives same result on windows:
+    # if on Windows, Import the certificate from the byte array and return the imported certificate
+    # if ([X509]::Get_Host_Os() -eq "Windows") {[void]$xsig.Import($certData, $Pin, $x509KeyStorageFlags); $cert = $xsig }
+
+    $store = [X509Store]::new([StoreLocation]::CurrentUser) # save the certificate to the personal store
     [void]$store.Open([OpenFlags]::ReadWrite)
     [void]$store.Add($cert)
     [void]$store.Close()
-    Write-Verbose "[+] Created $StoreLocation\$($cert.Thumbprint)"
+    Write-Debug "[+] Created $StoreLocation\$($cert.Thumbprint)"
     return $cert
   }
-  static [X509Certificate2] CreateCertificate([string]$subjectName) {
-    return [X509]::CreateCertificate($subjectName, [ECCurveName]::nistP521);
+  static [X509Certificate2] CreateCertificate([string]$subject, [string]$pfxFile, [securestring]$password) {
+    return [X509]::CreateCertificate($subject, [FileInfo]::new($pfxFile), $password);
   }
-  static [X509Certificate2] CreateCertificate([string]$subjectName, [ECCurveName]$curveName) {
-    [void][X509]::IsValidDistinguishedName($subjectName, $true);
-    $ecdsa = [ECDsa]::Create();
-    $ecdsa.GenerateKey([ECCurve]::CreateFromFriendlyName("$curveName"));
-    $certRequest = [X509]::GetCertificateRequest($subjectName, $ecdsa, [HashAlgorithmName]::SHA256, 2048)
-    return [X509]::CreateCertificate($certRequest, [IO.FileInfo]::New([char]8) , [securestring]::New(), [DateTimeOffset]::Now.AddDays(-1).DateTime, [DateTimeOffset]::Now.AddYears(10).DateTime);
+  static [X509Certificate2] CreateCertificate([string]$subject, [FileInfo]$pfxFile, [securestring]$password) {
+    return [X509]::CreateCertificate($subject, $pfxFile, $password, 2048, [datetime]::Now.AddDays(-1), [datetime]::Now.AddYears(10));
   }
-  static [X509Certificate2] CreateCertificate([string]$subjectName, [string]$pfxFile, [securestring]$password) {
-    return [X509]::CreateCertificate($subjectName, [IO.FileInfo]::new($pfxFile), $password);
+  static [X509Certificate2] CreateCertificate([string]$subject, [FileInfo]$pfxFile, [securestring]$password, [int]$keySizeInBits, [datetime]$notBefore, [datetime]$notAfter) {
+    [void][X509]::IsValidDistinguishedName($subject, $true);
+    $certificate = [X509]::CreateCertificate($pfxFile, $password, $false);
+    if ($null -ne $certificate) { return $certificate }
+    $certificateRequest = [X509]::GetCertificateRequest($subject, [Object]::new(), [HashAlgorithmName]::SHA256, $keySizeInBits)
+    return [X509]::CreateCertificate($certificateRequest, $pfxFile , $password, $notBefore, $notAfter);
   }
-  static [X509Certificate2] CreateCertificate([IO.FileInfo]$pfxFile, [securestring]$password, [bool]$throwOnFailure) {
+  static [X509Certificate2] CreateCertificate([FileInfo]$pfxFile, [securestring]$password, [bool]$throwOnFailure) {
     $Cert = $null; if ($pfxFile.Exists) {
       if ($null -ne $password) {
         [X509Certificate2]::new($pfxFile.FullName, $password)
@@ -2761,17 +2781,7 @@ class X509 : xcrypt {
       throw [FileNotFoundException]::New($pfxFile.FullName)
     }; return $Cert
   }
-  static [X509Certificate2] CreateCertificate([string]$subjectName, [IO.FileInfo]$pfxFile, [securestring]$password) {
-    return [X509]::CreateCertificate($subjectName, $pfxFile, $password, 2048, [datetime]::Now.AddDays(-1), [datetime]::Now.AddYears(10));
-  }
-  static [X509Certificate2] CreateCertificate([string]$subjectName, [IO.FileInfo]$pfxFile, [securestring]$password, [int]$keySizeInBits, [datetime]$notBefore, [datetime]$notAfter) {
-    [void][X509]::IsValidDistinguishedName($subjectName, $true);
-    $certificate = [X509]::CreateCertificate($pfxFile, $password, $false);
-    if ($null -ne $certificate) { return $certificate }
-    $certificateRequest = [X509]::GetCertificateRequest($subjectName, [Object]::new(), [HashAlgorithmName]::SHA256, $keySizeInBits)
-    return [X509]::CreateCertificate($certificateRequest, $pfxFile , $password, $notBefore, $notAfter);
-  }
-  static [X509Certificate2] CreateCertificate([CertificateRequest]$certificateRequest, [IO.FileInfo]$pfxFile, [securestring]$password, [datetime]$notBefore, [datetime]$notAfter) {
+  static [X509Certificate2] CreateCertificate([CertificateRequest]$certificateRequest, [FileInfo]$pfxFile, [securestring]$password, [datetime]$notBefore, [datetime]$notAfter) {
     $certResult = [X509Certificate2]$certificateRequest.CreateSelfSigned($notBefore, $notAfter);
     $certRawData = if (![string]::IsNullOrWhiteSpace([Pscredential]::new(' ', $password).GetNetworkCredential().Password)) {
       $certResult.Export([X509ContentType]::Pfx, $password)
@@ -2782,6 +2792,25 @@ class X509 : xcrypt {
     $Certificate = [X509Certificate2]::new([byte[]]$certRawData);
     $certResult.Dispose(); if ($pfxFile -and $pfxFile.BaseName -ne ([string][char]8)) { [IO.File]::WriteAllBytes($pfxFile.FullName, $certRawData) }
     return $certificate
+  }
+  static [X509Certificate2Collection] ShowCertificate([X509Certificate2[]]$Certificate, [bool]$Multipick) {
+    $certs = [X509Certificate2Collection]::new()
+    [void]$certs.AddRange($Certificate)
+    if ($Multipick) {
+      return [X509Certificate2UI]::SelectFromCollection(
+        $certs,
+        "Select a certificate",
+        "Select a certificate or certificates from the list",
+        "MultiSelection"
+      )
+    } else {
+      return [X509Certificate2UI]::SelectFromCollection(
+        $certs,
+        "Select a certificate",
+        "Select a certificate from the list",
+        "SingleSelection"
+      )
+    }
   }
   static [byte[]] Encrypt([byte[]]$PlainBytes, [X509Certificate2]$Cert) {
     $encryptor = $Cert.GetRSAPublicKey().CreateEncryptor()
@@ -2808,16 +2837,16 @@ class X509 : xcrypt {
     $extensionFormat = "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}={text}.*"
     return $extension -match $extensionFormat
   }
-  static [CertificateRequest] GetCertificateRequest([string]$subjectName) {
-    return [X509]::GetCertificateRequest($subjectName, [Object]::new(), [HashAlgorithmName]::SHA256, 2048)
+  static [CertificateRequest] GetCertificateRequest([string]$subject) {
+    return [X509]::GetCertificateRequest($subject, [Object]::new(), [HashAlgorithmName]::SHA256, 2048)
   }
-  static [CertificateRequest] GetCertificateRequest([string]$subjectName, $key, [HashAlgorithmName]$hashAlgorithm, [int]$keySizeInBits) {
-    [void][X509]::IsValidDistinguishedName($subjectName, $true);
+  static [CertificateRequest] GetCertificateRequest([string]$subject, $key, [HashAlgorithmName]$hashAlgorithm, [int]$keySizeInBits) {
+    [void][X509]::IsValidDistinguishedName($subject, $true);
     $certificateRequest = if ($key.GetType().Name -eq 'System.Security. Cryptography.ECDsa') {
       $ecdsa = [ECDsa]::Create(); $ecdsa.GenerateKey([ECCurve]::CreateFromFriendlyName("brainpoolP512r1")); $ecdsa.KeySize = $keySizeInBits
-      [CertificateRequest]::new($subjectName, $ecdsa, $hashAlgorithm);
+      [CertificateRequest]::new($subject, $ecdsa, $hashAlgorithm);
     } else {
-      [CertificateRequest]::new($subjectName, [RSA]::Create($keySizeInBits), $hashAlgorithm, [RSASignaturePadding]::Pkcs1);
+      [CertificateRequest]::new($subject, [System.Security.Cryptography.RSA]::Create($keySizeInBits), $hashAlgorithm, [RSASignaturePadding]::Pkcs1);
     }
     $certificateRequest.CertificateExtensions.Add([X509BasicConstraintsExtension]::new($true, $false, 0, $true));
     $certificateRequest.CertificateExtensions.Add([X509SubjectKeyIdentifierExtension]::new($certificateRequest.PublicKey, $false));
@@ -2842,25 +2871,20 @@ class X509 : xcrypt {
     $CertStore.Add($X509Cert2);
     $CertStore.Close()
   }
-
   static [byte[]] Export([X509Certificate2]$certificate) {
-    # Exports the certificate data in DER format.
-    return $certificate.Export([X509ContentType]::Cert)
+    # By DEFAULT it Exports the certificate data in DER format.
+    return [X509]::Export($certificate, [X509ContentType]::Cert)
   }
-
-  static [byte[]] Export([X509Certificate2]$certificate) {
-    return $certificate.Export([X509ContentType]::Pfx)
+  static [byte[]] Export([X509Certificate2]$certificate, [X509ContentType]$contenttype) {
+    return $certificate.Export($contenttype)
   }
-
   static [X509Certificate2] GetCertificate([byte[]]$rawData) {
     # do stuff here
     return [X509Certificate2]::new($rawData)
   }
-
   static [X509Certificate2] GetPfxCertificate([byte[]]$pfxData, [securestring]$password) {
     return [X509Certificate2]::new($pfxData, $password)
   }
-
   static [bool] TestCertificate([X509Certificate2]$certificate) {
     $passed_all_tests = $true
     # Check if the certificate has expired
@@ -2917,7 +2941,7 @@ class X509 : xcrypt {
     # A valid distinguished name string must follow a specific format, where each attribute is identified by a key and a value, separated by an equal sign =, and each attribute is separated by a comma , . For example, "CN=ddd" is a valid distinguished name string because it has a key CN and a value ddd separated by an equal sign =.
     $IsValid = ![string]::IsNullOrWhiteSpace($X500DistinguishedName) -and [regex]::IsMatch($X500DistinguishedName, '^(?:(?:\s*[a-zA-Z][a-zA-Z0-9-]*\s*=\s*[a-zA-Z0-9\s]*\s*,\s*)*(?:\s*[a-zA-Z][a-zA-Z0-9-]*\s*=\s*[a-zA-Z0-9\s]*\s*))?$')
     if (!$IsValid -and $throwOnFailure) {
-      throw 'Please Provide a valid certificate subjectName'
+      throw 'Please Provide a valid certificate subject Name. eX: CN="name"'
     }
     return $IsValid
   }
@@ -3906,7 +3930,7 @@ Class FileCryptr {
     $l += 'Set-Variable -Name {11} -Scope Local -Visibility Private -Option Private -Value $(${20}.CreateDecryptor().TransformFinalBlock(${12}, 16, ${12}.Length - 16))' + $n
     $l += '${20}.Clear(); ${20}.Dispose();' + $n
     $l += '${7} = [Encoding]::UTF8.GetString(${11});' + $n
-    if ([IO.FileInfo]::new($filePath).Extension -in ('.ps1', '.psm1', '.cmd', '.bat', '.sh')) {
+    if ([FileInfo]::new($filePath).Extension -in ('.ps1', '.psm1', '.cmd', '.bat', '.sh')) {
       # Why only these Extension? Well I mainly wrote this crypter to hide scripts from WDefender.
       $l += '& ([scriptblock]::Create("${7}"));' + $n
     } else {
@@ -4403,8 +4427,8 @@ class Decryptor {
 # Types that will be available to users when they import the module.
 $typestoExport = @(
   [CredentialManager], [NativeCredential], [CryptoAlgorithm], [EncryptionScope], [KeyExportPolicy], [SignatureUtils],
-  [FipsHmacSha256], [KeyProtection], [keyStoreMode], [Compression], [Expiration], [FileMonitor], [SecretStore],
-  [VaultClient], [CredManaged], [RSAPadding], [CredFlags], [CredType], [BitwUtil], [Shuffl3r], [ChaCha20],
+  [FipsHmacSha256], [KeyProtection], [keyStoreMode], [ECCurveName], [Compression], [Expiration], [FileMonitor], [SecretStore],
+  [VaultClient], [CredManaged], [RSAPadding], [CredFlags], [CredType], [BitwUtil], [Shuffl3r], [ChaCha20], [KeyUsage],
   [Poly1305], [TripleDES], [Encryptor], [Decryptor], [FileCryptr], [AesGCM], [AesCtr], [AesCng],
   [OTPKIT], [xcrypt], [X509], [MD5], [ECC], [RSA], [XOR], [k3y], [RC4]
 )
