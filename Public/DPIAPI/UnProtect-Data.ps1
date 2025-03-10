@@ -54,31 +54,39 @@ function UnProtect-Data {
       'Xml' {
         if ($PSCmdlet.ShouldProcess("Xml", "Protect")) {
           if ($UseCustomEntropy) {
-            UnProtect-Data -Bytes $($InputXml | xconvert ToBytes) -Entropy $Entropy -Scope $Scope
+            [xconvert]::FromProtected($($InputXml | xconvert ToBytes), $Entropy, $Scope)
           } else {
-            UnProtect-Data -Bytes $($InputXml | xconvert ToBytes) -Scope $Scope
+            throw [System.NotImplementedException]::new("Not yet implemented")
           }
         }
       }
       'string' {
         if ($PSCmdlet.ShouldProcess("String", "Protect")) {
           if ($UseCustomEntropy) {
-            UnProtect-Data -MSG $Msg -Scope $Scope -Entropy $Entropy
+            [xconvert]::FromProtected($Msg, $Entropy, $Scope)
           } else {
-            UnProtect-Data -MSG $Msg -Scope $Scope
+            [xconvert]::FromProtected($Msg, $Scope)
           }
         }
       }
       'Bytes' {
         if ($PSCmdlet.ShouldProcess("Bytes", "Protect")) {
           if ($UseCustomEntropy) {
-            UnProtect-Data -Bytes $Bytes -Scope $Scope -Entropy $Entropy
+            [xconvert]::FromProtected($Bytes, $Entropy, $Scope)
           } else {
-            UnProtect-Data -Bytes $Bytes -Scope $Scope
+            [xconvert]::FromProtected($Bytes, $Scope)
           }
         }
       }
-      'SecureString' { throw 'Yeet!' }
+      'SecureString' {
+        if ($PSCmdlet.ShouldProcess("String", "Protect")) {
+          if ($UseCustomEntropy) {
+            [xconvert]::FromProtected(($SecureMSG | xconvert Tostring), $Entropy, $Scope)
+          } else {
+            [xconvert]::FromProtected(($SecureMSG | xconvert Tostring), $Scope)
+          }
+        }
+      }
       Default {
         throw 'Error!'
       }

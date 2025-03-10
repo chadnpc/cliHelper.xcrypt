@@ -39,9 +39,9 @@ enum KeyProtection {
 }
 enum KeyUsage {
   None
-  EncipherOnly
   CRLSign
   CertSign
+  EncipherOnly
   KeyAgreement
   DataEncipherment
   KeyEncipherment
@@ -219,23 +219,19 @@ class cPsObject : PsObject {
 }
 
 #region    xcrypt
-# .DESCRIPTION
-#   xcrypt: xtended cryptography. you can do lots of cool stuff with this class. You just have to get creative with the methods.
-#     + It can act as your Password manger.
-#     + It can also be used as a simple chat bot (This is still in Beta)
-# .NOTES
-#   [+] Most of the methods work. (Most).
-#   [+] This file is over 4000 lines of code (All in One), so use regions code folding if your editor supports it.
+# .SYNOPSIS
+#   xtended cryptography helper class
 class xcrypt {
-  static hidden [string] $caller
-  static hidden [MethodInfo[]] $Methods = ([xcrypt].GetMethods().Where({ $_.IsStatic -and !$_.IsHideBySig }))
-  static hidden [Type[]] $ReturnTypes = ([xcrypt]::Methods.ReturnType | Sort-Object -Unique Name)
-  [ValidateNotNull()][byte[]]hidden $_salt
-  [ValidateNotNull()][byte[]]hidden $_bytes
-  static [ValidateNotNull()][EncryptionScope] $EncryptionScope
-  [ValidateNotNull()][securestring]hidden $_Password
-  [ValidateNotNull()][CryptoAlgorithm]hidden $_Algorithm
+  static [string] $caller
+  static [byte[]] $counter
+  static [EncryptionScope] $Scope = 'User'
+  static [Type[]] $ReturnTypes = ([xcrypt]::Methods.ReturnType | Sort-Object -Unique Name)
+  static [MethodInfo[]] $Methods = ([xcrypt].GetMethods().Where({ $_.IsStatic -and !$_.IsHideBySig }))
 
+  static hidden [ValidateNotNull()][byte[]] $_salt = [Convert]::FromBase64String( 'bz07LmY5XiNkXW1WQjxdXw==')
+  static hidden [ValidateNotNull()][byte[]] $_bytes
+  static hidden [ValidateNotNull()][securestring] $_Password
+  static hidden [ValidateNotNull()][CryptoAlgorithm] $_Algorithm
   xcrypt() {}
 
   static [string] GetRandomName() {
@@ -265,29 +261,23 @@ class xcrypt {
     }
     return [string][xcrypt]::GetRandomSTR($samplekeys, $iterations, $minLength, $maxLength);
   }
-  static [byte[]] GetDerivedBytes() {
-    return [xcrypt]::GetDerivedBytes(16)
+  static [byte[]] GetRfc2898DeriveBytes() {
+    return [xcrypt]::GetRfc2898DeriveBytes(16)
   }
-  static [byte[]] GetDerivedBytes([int]$Length) {
-    return [xcrypt]::GetDerivedBytes(([xcrypt]::GetRandomName(16) | xconvert ToSecurestring), $Length)
+  static [byte[]] GetRfc2898DeriveBytes([int]$Length) {
+    return [xcrypt]::GetRfc2898DeriveBytes(([xcrypt]::GetRandomName(16) | xconvert ToSecurestring), $Length)
   }
-  static [byte[]] GetDerivedBytes([securestring]$password) {
-    return [xcrypt]::GetDerivedBytes($password, 16)
+  static [byte[]] GetRfc2898DeriveBytes([securestring]$password) {
+    return [xcrypt]::GetRfc2898DeriveBytes($password, 16)
   }
-  static [byte[]] GetDerivedBytes([securestring]$password, [int]$Length) {
-    $pswd = $(switch ([xcrypt]::EncryptionScope.ToString()) {
-        "Machine" {
-          [Encoding]::UTF8.GetBytes([xcrypt]::GetUniqueMachineId())
-        }
-        Default {
-          [convert]::FromBase64String("hsKgmva9wZoDxLeREB1udw==")
-        }
-      }
-    ) | xconvert ToSecurestring
-    $s6lt = [Rfc2898DeriveBytes]::new($password, [Encoding]::UTF8.GetBytes(($password | xconvert ToString))).GetBytes(16)
-    return [xcrypt]::GetDerivedBytes($pswd, $s6lt, $Length)
+  static [byte[]] GetRfc2898DeriveBytes([securestring]$password, [int]$Length) {
+    return [xcrypt]::GetRfc2898DeriveBytes(
+      [xconvert]::ToSecurestring([xcrypt]::Scope.Equals([EncryptionScope]::User) ? [convert]::FromBase64String("hsKgmva9wZoDxLeREB1udw==") : [Encoding]::UTF8.GetBytes([xcrypt]::GetUniqueMachineId())),
+      [Rfc2898DeriveBytes]::new($password, [Encoding]::UTF8.GetBytes(($password | xconvert ToString))).GetBytes(16),
+      $Length
+    )
   }
-  static [byte[]] GetDerivedBytes([securestring]$password, [byte[]]$salt, [int]$Length) {
+  static [byte[]] GetRfc2898DeriveBytes([securestring]$password, [byte[]]$salt, [int]$Length) {
     return [Rfc2898DeriveBytes]::new($password, $salt, 1000).GetBytes($Length);
   }
   static [byte[]] GetKey() {
@@ -300,13 +290,13 @@ class xcrypt {
     return [xcrypt]::GetKey($password, 16)
   }
   static [byte[]] GetKey([securestring]$password, [int]$Length) {
-    return [xcrypt]::GetDerivedBytes($password, $Length)
+    return [xcrypt]::GetRfc2898DeriveBytes($password, $Length)
   }
   static [byte[]] GetKey([securestring]$password, [byte[]]$salt) {
     return [xcrypt]::GetKey($password, $salt, 16)
   }
   static [byte[]] GetKey([securestring]$password, [byte[]]$salt, [int]$Length) {
-    return [xcrypt]::GetDerivedBytes($password, $salt, $Length)
+    return [xcrypt]::GetRfc2898DeriveBytes($password, $salt, $Length)
   }
   # can be used to generate random IV
   static [byte[]] GetRandomEntropy() {
@@ -466,7 +456,7 @@ class xcrypt {
   static [Aes] GetAes([int]$Iterations) {
     $salt = $null; $password = $null;
     Set-Variable -Name password -Scope Local -Visibility Private -Option Private -Value $([xcrypt]::GeneratePassword() | xconvert ToSecurestring);
-    Set-Variable -Name salt -Scope Local -Visibility Private -Option Private -Value $([xcrypt]::GetDerivedBytes(16));
+    Set-Variable -Name salt -Scope Local -Visibility Private -Option Private -Value $([xcrypt]::GetRfc2898DeriveBytes(16));
     return [xcrypt]::GetAes($password, $salt, $Iterations)
   }
   static [Aes] GetAes([securestring]$password, [byte[]]$salt, [int]$iterations) {
@@ -572,7 +562,7 @@ class xcrypt {
     return [xcrypt]::GetPassword("Password", $ThrowOnFailure)
   }
   static [securestring] GetPassword([string]$Prompt, [bool]$ThrowOnFailure) {
-    if ([xcrypt]::EncryptionScope.ToString() -eq "Machine") {
+    if ([xcrypt]::Scope.ToString() -eq "Machine") {
       return ([xcrypt]::GetUniqueMachineId() | xconvert ToSecurestring)
     } else {
       $pswd = [SecureString]::new(); $_caller = 'PasswordManager'; if ([xcrypt]::caller) {
@@ -591,361 +581,6 @@ class xcrypt {
 }
 #endregion xcrypt
 
-#region     GitHub
-class GitHub {
-  static $webSession
-  static [string] $UserName
-  static hidden [bool] $IsInteractive = $false
-  static hidden [string] $TokenFile = [GitHub]::GetTokenFile()
-
-  static [PSObject] createSession() {
-    return [Github]::createSession([Github]::UserName)
-  }
-  static [PSObject] createSession([string]$UserName) {
-    [GitHub]::SetToken()
-    return [GitHub]::createSession($UserName, [GitHub]::GetToken())
-  }
-  static [Psobject] createSession([string]$GitHubUserName, [securestring]$clientSecret) {
-    [ValidateNotNullOrEmpty()][string]$GitHubUserName = $GitHubUserName
-    [ValidateNotNullOrEmpty()][string]$GithubToken = $GithubToken = $([securestring]$clientSecret | xconvert ToString)
-    $encodedAuth = [Convert]::ToBase64String([Encoding]::UTF8.GetBytes("$($GitHubUserName):$($GithubToken)"))
-    $web_session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-    [void]$web_session.Headers.Add('Authorization', "Basic $($encodedAuth)")
-    [void]$web_session.Headers.Add('Accept', 'application/vnd.github.v3+json')
-    [GitHub]::webSession = $web_session
-    return $web_session
-  }
-  static [void] SetToken() {
-    [GitHub]::SetToken(((Read-Host -Prompt "[GitHub] Paste/write your api token" -AsSecureString) | xconvert ToString), $(Read-Host -Prompt "[GitHub] Paste/write a Password to encrypt the token" -AsSecureString))
-  }
-  static [void] SetToken([string]$token, [securestring]$password) {
-    if (![IO.File]::Exists([GitHub]::TokenFile)) { New-Item -Type File -Path ([GitHub]::TokenFile) -Force | Out-Null }
-    [IO.File]::WriteAllText([GitHub]::TokenFile, [convert]::ToBase64String([AesGCM]::Encrypt([Encoding]::UTF8.GetBytes($token), $password)), [Encoding]::UTF8);
-  }
-  static [securestring] GetToken() {
-    $sectoken = $null; $session_pass = '123' | xconvert ToSecurestring;
-    try {
-      if ([GitHub]::IsInteractive) {
-        if ([string]::IsNullOrWhiteSpace((Get-Content ([GitHub]::TokenFile) -ErrorAction Ignore))) {
-          Write-Host "[GitHub] You'll need to set your api token first. This is a One-Time Process :)" -ForegroundColor Green
-          [GitHub]::SetToken()
-          Write-Host "[GitHub] Good, now let's use the api token :)" -ForegroundColor DarkGreen
-        } elseif ([GitHub]::ValidateBase64String([IO.File]::ReadAllText([GitHub]::TokenFile))) {
-          Write-Host "[GitHub] Encrypted token found in file: $([GitHub]::TokenFile)" -ForegroundColor DarkGreen
-        } else {
-          throw [Exception]::New("Unable to read token file!")
-        }
-        $session_pass = Read-Host -Prompt "[GitHub] Input password to use your token" -AsSecureString
-      } else {
-        #Fix: Temporary Workaround: Thisz a pat from one of my GitHub a/cs.It Can only read/write gists. Will expire on 1/1/2025. DoNot Abuse this or I'll take it down!!
-        $et = "OOLqqov4ugMQAtFcWqbzRwNBD65uf9JOZ+jzx1RtcHAZtnKaq1zkIpBcuv1MQfOkvIr/V066Zgsaq5Gka+VhlbqhV8apm8zcQomYjYqLaECKAonFeeo9MqvaP1F2VLgXokrxD1M6weLwS7KC+dyvAgv10IEvLzWFMw=="
-        [GitHub]::SetToken([convert]::ToBase64String([AesGCM]::Decrypt([convert]::FromBase64String($et), $session_pass)), $session_pass)
-      }
-      $sectoken = [Encoding]::UTF8.GetString(
-        [AesGCM]::Decrypt([Convert]::FromBase64String([IO.File]::ReadAllText([GitHub]::GetTokenFile())), $session_pass)
-      ) | xconvert ToSecurestring
-    } catch {
-      throw $_
-    }
-    return $sectoken
-  }
-  static [PsObject] GetUserInfo([string]$UserName) {
-    if ([string]::IsNullOrWhiteSpace([GitHub]::userName)) { [GitHub]::createSession() }
-    $response = Invoke-RestMethod -Uri "https://api.github.com/user/$UserName" -WebSession ([GitHub]::webSession) -Method Get -Verbose:$false
-    return $response
-  }
-  static [PsObject] GetGist([uri]$Uri) {
-    $l = [GistFile]::Create($Uri)
-    return [GitHub]::GetGist($l.Owner, $l.Id)
-  }
-  static [PsObject] GetGist([string]$UserName, [string]$GistId) {
-    $t = [GitHub]::GetToken()
-    if ($null -eq ([GitHub]::webSession)) {
-      [GitHub]::webSession = $(if ($null -eq $t) {
-          [GitHub]::createSession($UserName)
-        } else {
-          [GitHub]::createSession($UserName, $t)
-        }
-      )
-    }
-    if (!((Test-Connection github.com -Count 1).status -eq "Success")) {
-      throw [Net.NetworkInformation.PingException]::new("PingException, PLease check your connection!");
-    }
-    if ([string]::IsNullOrWhiteSpace($GistId) -or $GistId -eq '*') {
-      return Get-Gists -UserName $UserName -SecureToken $t
-    }
-    return Invoke-RestMethod -Uri "https://api.github.com/gists/$GistId" -WebSession ([GitHub]::webSession) -Method Get -Verbose:$false
-  }
-  Static [string] GetGistContent([string]$FileName, [uri]$GistUri) {
-    return [GitHub]::GetGist($GistUri).files.$FileName.content
-  }
-  static [PsObject] CreateGist([string]$description, [array]$files) {
-    $url = 'https://api.github.com/gists'
-    $body = @{
-      description = $description
-      files       = @{}
-    }
-    foreach ($file in $files) {
-      $body.files[$file.Name] = @{
-        content = $file.Content
-      }
-    }
-    $response = Invoke-RestMethod -Uri $url -WebSession ([GitHub]::webSession) -Method Post -Body ($body | ConvertTo-Json) -Verbose:$false
-    return $response
-  }
-  static [PsObject] UpdateGist([GistFile]$gist, [string]$NewContent) {
-    return ''
-  }
-  static [string] GetTokenFile() {
-    if (![IO.File]::Exists([GitHub]::TokenFile)) {
-      [GitHub]::TokenFile = [IO.Path]::Combine([GitHub]::Get_dataPath('Github', 'clicache'), "token");
-    }
-    return [GitHub]::TokenFile
-  }
-  static [PsObject] GetUserRepositories() {
-    if ($null -eq [GitHub]::webSession) { [Github]::createSession() }
-    $response = Invoke-RestMethod -Uri 'https://api.github.com/user/repos' -WebSession ([GitHub]::webSession) -Method Get -Verbose:$false
-    return $response
-  }
-  static [psobject] ParseLink([string]$text, [bool]$throwOnFailure) {
-    [ValidateNotNullOrEmpty()][string]$text = $text
-    $uri = $text -as 'Uri'; if ($uri -isnot [Uri] -and $throwOnFailure) {
-      throw [InvalidOperationException]::New("Could not create uri from text '$text'.")
-    }; $Scheme = $uri.Scheme
-    if ([regex]::IsMatch($text, '^(\/[a-zA-Z0-9_-]+)+|([a-zA-Z]:\\(((?![<>:"\/\\|?*]).)+\\?)*((?![<>:"\/\\|?*]).)+)$')) {
-      if ($text.ToCharArray().Where({ $_ -in [IO.Path]::InvalidPathChars }).Count -eq 0) {
-        $Scheme = 'file'
-      } else {
-        Write-Debug "'$text' has invalidPathChars in it !" -Debug
-      }
-    }
-    $IsValid = $Scheme -in @('file', 'https')
-    $IsGistUrl = [Regex]::IsMatch($text, 'https?://gist\.github\.com/\w+/[0-9a-f]+')
-    $OutptObject = [pscustomobject]@{
-      FullName = $text
-      Scheme   = [PSCustomObject]@{
-        Name      = $Scheme
-        IsValid   = $IsValid
-        IsGistUrl = $IsGistUrl
-      }
-    }
-    return $OutptObject
-  }
-  static [string] Get_Host_Os() {
-    # Should return one of these: [Enum]::GetNames([System.PlatformID])
-    return $(if ($(Get-Variable IsWindows -Value)) { "Windows" }elseif ($(Get-Variable IsLinux -Value)) { "Linux" }elseif ($(Get-Variable IsMacOS -Value)) { "macOS" }else { "UNKNOWN" })
-  }
-  static [IO.DirectoryInfo] Get_dataPath([string]$appName, [string]$SubdirName) {
-    $_Host_OS = [GitHub]::Get_Host_Os()
-    $dataPath = if ($_Host_OS -eq 'Windows') {
-      [DirectoryInfo]::new([IO.Path]::Combine($Env:HOME, "AppData", "Roaming", $appName, $SubdirName))
-    } elseif ($_Host_OS -in ('Linux', 'MacOs')) {
-      [DirectoryInfo]::new([IO.Path]::Combine((($env:PSModulePath -split [IO.Path]::PathSeparator)[0] | Split-Path | Split-Path), $appName, $SubdirName))
-    } elseif ($_Host_OS -eq 'Unknown') {
-      try {
-        [DirectoryInfo]::new([IO.Path]::Combine((($env:PSModulePath -split [IO.Path]::PathSeparator)[0] | Split-Path | Split-Path), $appName, $SubdirName))
-      } catch {
-        Write-Warning "Could not resolve chat data path"
-        Write-Warning "HostOS = '$_Host_OS'. Could not resolve data path."
-        [Directory]::CreateTempSubdirectory(($SubdirName + 'Data-'))
-      }
-    } else {
-      throw [InvalidOperationException]::new('Could not resolve data path. Get_Host_OS FAILED!')
-    }
-    if (!$dataPath.Exists) { [GitHub]::Create_Dir($dataPath) }
-    return $dataPath
-  }
-  static [void] Create_Dir([string]$Path) {
-    [GitHub]::Create_Dir([DirectoryInfo]::new($Path))
-  }
-  static [void] Create_Dir([DirectoryInfo]$Path) {
-    [ValidateNotNullOrEmpty()][DirectoryInfo]$Path = $Path
-    $nF = @(); $p = $Path; while (!$p.Exists) { $nF += $p; $p = $p.Parent }
-    [Array]::Reverse($nF); $nF | ForEach-Object { $_.Create(); Write-Verbose "Created $_" }
-  }
-  static [bool] ValidateBase64String([string]$base64) {
-    return $(try { [void][Convert]::FromBase64String($base64); $true } catch { $false })
-  }
-  static [bool] IsConnected() {
-    if (![bool]("System.Net.NetworkInformation.Ping" -as 'type')) { Add-Type -AssemblyName System.Net.NetworkInformation };
-    $cs = $null; $re = @{ true = @{ m = "Success"; c = "Green" }; false = @{ m = "Failed"; c = "Red" } }
-    Write-Host "[Github] Testing Connection ... " -ForegroundColor Blue -NoNewline
-    try {
-      [Net.NetworkInformation.PingReply]$PingReply = [Net.NetworkInformation.Ping]::new().Send("github.com");
-      $cs = $PingReply.Status -eq [Net.NetworkInformation.IPStatus]::Success
-    } catch [Net.Sockets.SocketException], [Net.NetworkInformation.PingException] {
-      $cs = $false
-    } catch {
-      $cs = $false;
-      Write-Error $_
-    }
-    $re = $re[$cs.ToString()]
-    Write-Host $re.m -ForegroundColor $re.c
-    return $cs
-  }
-}
-class GistFile {
-  [string]$Name # with extention
-  [string]$language
-  [string]$type
-  [string]$Owner
-  [string]$raw_url
-  [bool]$IsPublic
-  [bool]$truncated
-  [string]$Id
-  [int]$size
-  [GistFile[]]$files
-  hidden [string]$content
-  static [string]$UserName
-  static [PsObject]$ChildItems
-  GistFile([string]$filename) {
-    $this.Name = $filename
-  }
-  GistFile([PsObject]$GistInfo) {
-    $this.language = $GistInfo.language
-    $this.IsPublic = $GistInfo.IsPublic
-    $this.raw_url = $GistInfo.raw_url
-    $this.type = $GistInfo.type
-    $this.Name = $GistInfo.filename
-    $this.size = $GistInfo.size
-    $this.Id = $GistInfo.Id
-    $this.Owner = $GistInfo.Owner
-    if ([string]::IsNullOrWhiteSpace($this.Owner)) {
-      if (![string]::IsNullOrWhiteSpace([GistFile]::UserName)) {
-        $this.Owner = [GistFile]::UserName
-      } else {
-        Write-Warning "Gist Owner was not set!"
-      }
-    }
-    if ($null -eq ([GistFile]::ChildItems) -and ![string]::IsNullOrWhiteSpace($this.Id)) {
-      [GistFile]::ChildItems = [GitHub]::GetGist($this.Owner, $this.Id).files
-    }
-    if ($null -ne [GistFile]::ChildItems) {
-      $_files = $null; [string[]]$filenames = [GistFile]::ChildItems | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
-      try {
-        $_files = [GistFile[]]$filenames.Foreach({
-            $_Item = [GistFile]::ChildItems."$_"
-            $_Gist = [GistFile]::new($_Item.filename)
-            $_Gist.language = $_Item.language
-            $_Gist.Ispublic = $this.IsPublic
-            $_Gist.raw_url = $_Item.raw_url
-            $_Gist.type = $_Item.type
-            $_Gist.size = $_Item.size
-            $_Gist.content = $_Item.content
-            $_Gist.Owner = $this.Owner; $_Gist.Id = $this.Id
-            $_Gist
-          }
-        )
-      } finally {
-        [GistFile]::ChildItems = $null
-        $this.files = $_files
-        if ([string]::IsNullOrWhiteSpace($this.Name)) {
-          $this.Name = $filenames[0]
-        }
-      }
-    }
-  }
-  static [GistFile] Create([uri]$GistUri) {
-    $res = $null; $ogs = $GistUri.OriginalString
-    $IsRawUri = $ogs.Contains('/raw/') -and $ogs.Contains('gist.githubusercontent.com')
-    $seg = $GistUri.Segments
-    $res = $(if ($IsRawUri) {
-        $_name = $seg[-1]
-        $rtri = 'https://gist.github.com/{0}{1}' -f $seg[1], $seg[2]
-        $rtri = $rtri.Remove($rtri.Length - 1)
-        $info = [GitHub]::GetGist([uri]::new($rtri))
-        $file = $info.files."$_name"
-        [PsCustomObject]@{
-          language = $file.language
-          IsPublic = $info.IsPublic
-          raw_url  = $file.raw_url
-          Owner    = $info.owner.login
-          type     = $file.type
-          filename = $_name
-          size     = $file.size
-          Id       = $seg[2].Replace('/', '')
-        }
-      } else {
-        # $info = [GitHub]::GetGist($GistUri)
-        [PsCustomObject]@{
-          language = ''
-          IsPublic = $null
-          raw_url  = ''
-          Owner    = $seg[1].Split('/')[0]
-          type     = ''
-          filename = ''
-          size     = ''
-          Id       = $seg[-1]
-        }
-      }
-    )
-    if (![string]::IsNullOrWhiteSpace($res.Owner)) {
-      [GistFile]::UserName = $res.Owner
-    }
-    return [GistFile]::New($res)
-  }
-  [string] ShowFileInfo() {
-    return "File: $($this.Name)"
-  }
-}
-
-class Gist {
-  [uri] $Uri
-  [string] $Id
-  [string] $Owner
-  [string] $Description
-  [bool] $IsPublic
-  [GistFile[]] $Files = @()
-
-  Gist() {}
-  Gist([string]$Name) {
-    $this.AddFile([GistFile]::new($Name))
-  }
-  [psobject] Post() {
-    $gisfiles = @()
-    $this.Files.Foreach({
-        $gisfiles += @{
-          $_.Name = @{
-            content = $_.Content
-          }
-        }
-      }
-    )
-    $data = @{
-      files       = $gisfiles
-      description = $this.Description
-      public      = $this.IsPublic
-    } | ConvertTo-Json
-
-    Write-Verbose ($data | Out-String)
-    Write-Verbose "[PROCESS] Posting to https://api.github.com/gists"
-    $invokeParams = @{
-      Method      = 'Post'
-      Uri         = "https://api.github.com/gists"
-      WebSession  = [GitHub]::webSession
-      Body        = $data
-      ContentType = 'application/json'
-    }
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $r = Invoke-RestMethod @invokeParams
-    $r = $r | Select-Object @{Name = "Url"; Expression = { $_.html_url } }, Description, Public, @{Name = "Created"; Expression = { $_.created_at -as [datetime] } }
-    return $r
-  }
-  [void] AddFile([GistFile]$file) {
-    $this.Files += $file
-  }
-  [string] ShowInfo() {
-    $info = "Gist ID: $($this.Id)"
-    $info += "`nDescription: $($this.Description)"
-    $info += "`nFiles:"
-    foreach ($file in $this.Files.Values) {
-      $info += "`n  - $($file.ShowFileInfo())"
-    }
-    return $info
-  }
-}
-
-#endregion GitHub
 
 class SignatureUtils {
   # Static Properties
@@ -1385,13 +1020,13 @@ class OTPKIT {
 #region    VaultStuff
 # A managed credential object. Makes it easy to protect, convert, save and stuff ..
 class CredManaged {
-  [string]$target
-  [CredType]hidden $type = [CredType]1;
-  [bool]hidden $IsProtected = $false;
+  [string] $target
+  hidden [bool] $IsProtected = $false;
+  hidden [CredType] $type = [CredType]1;
+  hidden [EncryptionScope] $Scope = 'User';
   [ValidateNotNullOrEmpty()][string]$UserName = $(whoami);
   [ValidateNotNullOrEmpty()][securestring]$Password = [securestring]::new();
-  [ValidateNotNullOrEmpty()][string]hidden $Domain = [Environment]::UserDomainName;
-  [ValidateSet('User', 'Machine')][ValidateNotNullOrEmpty()][string]hidden $Scope = 'User';
+  [ValidateNotNullOrEmpty()][string]$Domain = [Environment]::UserDomainName;
 
   CredManaged() {}
   CredManaged([string]$target, [string]$username, [SecureString]$password) {
@@ -1582,7 +1217,7 @@ class CredentialManager {
     return $Credentials
   }
   [Psobject[]] static hidden get_StoredCreds() {
-    $_Host_OS = [GitHub]::Get_Host_Os()
+    $_Host_OS = [xcrypt]::Get_Host_Os()
     if ($_Host_OS -in ('Linux', 'MacOs')) {
       throw [Exception]::new('UnsupportedPlatform: get_StoredCreds() works on Windows Only.')
     }
@@ -1624,7 +1259,7 @@ class CredentialManager {
   static hidden [void] Init() {
     $Host_OS = $(if ($(Get-Variable PSVersionTable -Value).PSVersion.Major -le 5 -or $(Get-Variable IsWindows -Value)) { "Windows" }elseif ($(Get-Variable IsLinux -Value)) { "Linux" }elseif ($(Get-Variable IsMacOS -Value)) { "macOS" }else { "UNKNOWN" });
     if ($Host_OS -ne "Windows") {
-      throw "Error: '$Host_OS' is Unsupported. CredentialManager class works on windows only."
+      throw [System.PlatformNotSupportedException]::new("'$Host_OS' is not supported. CredentialManager class works on windows only.")
     }
     $CONSTANTS = [psobject]::new()
     $CONSTANTS.psobject.Properties.Add([psscriptproperty]::new('ERROR_SUCCESS', { return 0 }))
@@ -2205,13 +1840,11 @@ class Shuffl3r {
 #  Todo: Find a working/cross-platform way to protect bytes (Like DPAPI for windows but better) then
 #  add static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [byte[]]$associatedData, [bool]$Protect, [string]$Compression, [int]$iterations)
 class AesGCM : xcrypt {
-  # static hidden [byte[]]$_salt = [convert]::FromBase64String("hsKgmva9wZoDxLeREB1udw==");
-  static hidden [EncryptionScope] $Scope = [EncryptionScope]::User
   static [byte[]] Encrypt([byte[]]$bytes) {
     return [AesGCM]::Encrypt($bytes, [AesGCM]::GetPassword());
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password) {
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password)
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password)
     return [AesGCM]::Encrypt($bytes, $Password, $_salt);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt) {
@@ -2221,14 +1854,14 @@ class AesGCM : xcrypt {
     return [convert]::ToBase64String([AesGCM]::Encrypt([Encoding]::UTF8.GetBytes("$text"), $Password, $iterations));
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [int]$iterations) {
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password)
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password)
     return [AesGCM]::Encrypt($bytes, $Password, $_salt, $null, $null, $iterations);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [int]$iterations) {
     return [AesGCM]::Encrypt($bytes, $Password, $Salt, $null, $null, $iterations);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [int]$iterations, [string]$Compression) {
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password)
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password)
     return [AesGCM]::Encrypt($bytes, $Password, $_salt, $null, $Compression, $iterations);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [byte[]]$associatedData, [int]$iterations) {
@@ -2290,7 +1923,7 @@ class AesGCM : xcrypt {
     Write-Verbose "$([AesGCM]::caller) Begin file encryption:"
     Write-Verbose "[-]  File    : $File"
     Write-Verbose "[-]  OutFile : $OutPath"
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password);
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password);
     $encryptdbytes = [AesGCM]::Encrypt($ba, $Password, $_salt, $null, $Compression, $iterations)
     $streamWriter = [FileStream]::new($OutPath, [FileMode]::OpenOrCreate);
     [void]$streamWriter.Write($encryptdbytes, 0, $encryptdbytes.Length);
@@ -2302,7 +1935,7 @@ class AesGCM : xcrypt {
     return [AesGCM]::Decrypt($bytes, [AesGCM]::GetPassword());
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password) {
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password)
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password)
     return [AesGCM]::Decrypt($bytes, $Password, $_salt);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt) {
@@ -2312,14 +1945,14 @@ class AesGCM : xcrypt {
     return [Encoding]::UTF8.GetString([AesGCM]::Decrypt([convert]::FromBase64String($text), $Password, $iterations));
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [int]$iterations) {
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password)
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password)
     return [AesGCM]::Decrypt($bytes, $Password, $_salt, $null, $null, $iterations);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [int]$iterations) {
     return [AesGCM]::Decrypt($bytes, $Password, $Salt, $null, $null, 1);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [int]$iterations, [string]$Compression) {
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password)
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password)
     return [AesGCM]::Decrypt($bytes, $Password, $_salt, $null, $Compression, $iterations);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [byte[]]$associatedData, [int]$iterations) {
@@ -2341,8 +1974,8 @@ class AesGCM : xcrypt {
         # Write-Host "$([AesGCM]::caller) [+] Decryption [$i/$iterations] ... Done" -ForegroundColor Yellow
         # if ($UnProtect) { $_bytes = UnProtect-Data -bytes $_bytes -entropy $Salt -scope User }
         # Split the real encrypted bytes from nonce & tags then decrypt them:
-                ($b, $n1) = [Shuffl3r]::Split($_bytes, $Password, $TAG_SIZE);
-                ($b, $n2) = [Shuffl3r]::Split($b, $Password, $IV_SIZE);
+         ($b, $n1) = [Shuffl3r]::Split($_bytes, $Password, $TAG_SIZE);
+         ($b, $n2) = [Shuffl3r]::Split($b, $Password, $IV_SIZE);
         $Decrypted = [byte[]]::new($b.Length);
         $aes.Decrypt($n2, $b, $n1, $Decrypted, $associatedData);
         $_bytes = $Decrypted;
@@ -2381,7 +2014,7 @@ class AesGCM : xcrypt {
     Write-Verbose "$([AesGCM]::caller) Begin file decryption:"
     Write-Verbose "[-]  File    : $File"
     Write-Verbose "[-]  OutFile : $OutPath"
-    [byte[]]$_salt = [AesGCM]::GetDerivedBytes($Password);
+    [byte[]]$_salt = [AesGCM]::GetRfc2898DeriveBytes($Password);
     $decryptdbytes = [AesGCM]::Decrypt($ba, $Password, $_salt, $null, $Compression, $iterations)
     $streamWriter = [FileStream]::new($OutPath, [FileMode]::OpenOrCreate);
     [void]$streamWriter.Write($decryptdbytes, 0, $decryptdbytes.Length);
@@ -2403,16 +2036,16 @@ class AesGCM : xcrypt {
 #     Plus there is the option to stack encryptions by iteration. (But beware when you iterate much it produces larger output)
 class AesCng : xcrypt {
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password) {
-    return [AesCng]::Encrypt($Bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='));
+    return [AesCng]::Encrypt($Bytes, $Password, [AesCng]::_salt);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt) {
     return [AesCng]::Encrypt($Bytes, $Password, $Salt, 'Gzip', $false);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [bool]$Protect) {
-    return [AesCng]::Encrypt($Bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='), 'Gzip', $Protect);
+    return [AesCng]::Encrypt($Bytes, $Password, [AesCng]::_salt, 'Gzip', $Protect);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [securestring]$Password, [int]$iterations) {
-    return [AesCng]::Encrypt($Bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='), $iterations)
+    return [AesCng]::Encrypt($Bytes, $Password, [AesCng]::_salt, $iterations)
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [bool]$Protect) {
     return [AesCng]::Encrypt($Bytes, $Password, $Salt, 'Gzip', $Protect);
@@ -2428,7 +2061,7 @@ class AesCng : xcrypt {
     return $_bytes;
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [string]$Compression) {
-    return [AesCng]::Encrypt($Bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='), $Compression, $false);
+    return [AesCng]::Encrypt($Bytes, $Password, [AesCng]::_salt, $Compression, $false);
   }
   static [byte[]] Encrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [string]$Compression) {
     return [AesCng]::Encrypt($Bytes, $Password, $Salt, $Compression, $false);
@@ -2455,10 +2088,10 @@ class AesCng : xcrypt {
     return [AesCng]::Decrypt($bytes, $Password, $Salt, 'GZip', $false);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [bool]$UnProtect) {
-    return [AesCng]::Decrypt($bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='), 'GZip', $UnProtect);
+    return [AesCng]::Decrypt($bytes, $Password, [AesCng]::_salt, 'GZip', $UnProtect);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [int]$iterations) {
-    return [AesCng]::Decrypt($Bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='), $iterations);
+    return [AesCng]::Decrypt($Bytes, $Password, [AesCng]::_salt, $iterations);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [bool]$UnProtect) {
     return [AesCng]::Decrypt($bytes, $Password, $Salt, 'GZip', $UnProtect);
@@ -2474,7 +2107,7 @@ class AesCng : xcrypt {
     return $_bytes
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [string]$Compression) {
-    return [AesCng]::Decrypt($bytes, $Password, [Convert]::FromBase64String('bz07LmY5XiNkXW1WQjxdXw=='), $Compression, $false);
+    return [AesCng]::Decrypt($bytes, $Password, [AesCng]::_salt, $Compression, $false);
   }
   static [byte[]] Decrypt([byte[]]$Bytes, [SecureString]$Password, [byte[]]$Salt, [string]$Compression) {
     return [AesCng]::Decrypt($bytes, $Password, $Salt, $Compression, $false);
@@ -2503,11 +2136,9 @@ class AesCng : xcrypt {
 #   [CipherMode]::CTR is not available in PowerShell.
 #   This class implements the CTR mode manually by XOR-ing with a sequence of counter blocks generated from the given nonce (IV) and block count.
 # .NOTES
-#    I found out that, in practice it is recommended to use a more secure encryption mode, such as `[System.Security.Cryptography.CipherMode]::GCM` instead of a manual implementing the CTR mode.
-#    So I gave it up and I dont use/recommend this class. what a waste!
+#    It's awell known standard and recommended to use a more secure ciphermode mode, such as `[System.Security.Cryptography.CipherMode]::GCM` instead of a manual implementing the CTR mode.
+#    thus I dont recommend using this class. what a waste!
 class AesCtr : xcrypt {
-  static hidden [byte[]]$counter
-
   static [Byte[]] Encrypt([Byte[]]$Bytes, [byte[]]$Key, [byte[]]$IV) {
     $aes = [AesCryptoServiceProvider]::new()
     $aes.Mode = [CipherMode]::CBC
@@ -2726,9 +2357,10 @@ class X509 : xcrypt {
     $t, $f = @{
       'NonExportable:None:None'                             = ('Cert', 'UserKeySet')
       'NonExportable:DataEncipherment:Protect'              = ('SerializedCertPfx', 'UserProtected')
-      'ExportableEncrypted:DataEncipherment:Protect'        = ('Pkcs12', 'Exportable')
-      'ExportableEncrypted:DataEncipherment:ProtectHigh'    = ('Pkcs12', 'UserProtected')
-      'ExportableEncrypted:KeyEncipherment:Protect'         = ('Pkcs12', 'Exportable')
+      'ExportableEncrypted:None:Protect'                    = ('Pfx', 'Exportable')
+      'ExportableEncrypted:DataEncipherment:Protect'        = ('Pfx', 'UserKeySet')
+      'ExportableEncrypted:KeyEncipherment:Protect'         = ('Pfx', 'Exportable')
+      'ExportableEncrypted:DataEncipherment:ProtectHigh'    = ('Pfx', 'UserProtected')
       'ExportableEncrypted:CertSign:Protect'                = ('SerializedStore', 'EphemeralKeySet')
       'Exportable:DataEncipherment:None'                    = ('Pkcs12', 'Exportable')
       'Exportable:DataEncipherment:Protect'                 = ('Pkcs12', 'UserProtected')

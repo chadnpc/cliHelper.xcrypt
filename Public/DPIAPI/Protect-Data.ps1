@@ -54,31 +54,37 @@ function Protect-Data {
       'Xml' {
         if ($PSCmdlet.ShouldProcess("Xml", "Protect")) {
           if ($UseCustomEntropy) {
-            Protect-Data -Bytes $($InputXml | xconvert ToBytes) -Scope $Scope -Entropy $Entropy
+            [xconvert]::ToProtected(($InputXml | xconvert ToBytes), $Entropy, $Scope)
           } else {
-            Protect-Data -Bytes $($InputXml | xconvert ToBytes) -Scope $Scope
+            [xconvert]::ToProtected(($InputXml | xconvert ToBytes), $Scope)
           }
         }
       }
       'string' {
         if ($PSCmdlet.ShouldProcess("String", "Protect")) {
           if ($UseCustomEntropy) {
-            Protect-Data -MSG $Msg -Scope $Scope -Entropy $Entropy
+            [xconvert]::ToProtected($MSG, $Entropy, $Scope)
           } else {
-            Protect-Data -MSG $Msg -Scope $Scope
+            [xconvert]::ToProtected($MSG, $Scope)
           }
         }
       }
       'Bytes' {
         if ($PSCmdlet.ShouldProcess("Bytes", "Protect")) {
           if ($UseCustomEntropy) {
-            Protect-Data -Bytes $Bytes -Scope $Scope -Entropy $Entropy
+            [xconvert]::ToProtected($Bytes, $Entropy, $Scope)
           } else {
-            Protect-Data -Bytes $Bytes -Scope $Scope
+            [xconvert]::ToProtected($Bytes, $Scope)
           }
         }
       }
-      'SecureString' { throw 'Yeet!' }
+      'SecureString' {
+        if ($UseCustomEntropy) {
+          [xconvert]::ToProtected(($SecureMSG | xconvert Tostring), $Entropy, $Scope)
+        } else {
+          [xconvert]::ToProtected(($SecureMSG | xconvert Tostring), $Scope)
+        }
+      }
       Default {
         throw 'Error!'
       }
