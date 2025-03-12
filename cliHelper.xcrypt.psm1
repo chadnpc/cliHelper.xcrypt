@@ -12,7 +12,7 @@ using namespace System.Runtime.InteropServices
 using namespace System.Security.Cryptography.X509Certificates
 
 #Requires -PSEdition Core
-#Requires -Modules cliHelper.xconvert
+#Requires -Modules PsModuleBase, cliHelper.xconvert
 
 #region    enums
 
@@ -471,14 +471,14 @@ class xcrypt {
     $aes.IV = [xcrypt]::GetRandomEntropy();
     return $aes
   }
-  # Use a cryptographic hash function (SHA-256) to generate a unique machine ID
   static [string] GetUniqueMachineId() {
+    # get_product_uuid : Uses a cryptographic hash function (SHA-256) to generate a unique machine ID
     $Id = [string]($Env:MachineId)
     $vp = (Get-Variable VerbosePreference).Value
     try {
       Set-Variable VerbosePreference -Value $([System.Management.Automation.ActionPreference]::SilentlyContinue)
       $sha256 = [SHA256]::Create()
-      $HostOS = $(if ($(Get-Variable PSVersionTable -Value).PSVersion.Major -le 5 -or $(Get-Variable IsWindows -Value)) { "Windows" }elseif ($(Get-Variable IsLinux -Value)) { "Linux" }elseif ($(Get-Variable IsMacOS -Value)) { "macOS" }else { "UNKNOWN" });
+      $HostOS = [xcrypt]::Get_Host_Os()
       if ($HostOS -eq "Windows") {
         if ([string]::IsNullOrWhiteSpace($Id)) {
           $machineId = Get-CimInstance -ClassName Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID
@@ -574,6 +574,38 @@ class xcrypt {
       }
       return $pswd;
     }
+  }
+  static [bool] saveModuledata([string]$stringsKey, [Object]$value) {
+    return $null
+  }
+  static [bool] ValidadePsd1File([IO.FileInFo]$File) {
+    return [xcrypt]::ValidadePsd1File($File, $false)
+  }
+  static [bool] ValidadePsd1File([IO.DirectoryInfo]$Parent) {
+    $File = [IO.Path]::Combine($Parent, (Get-Culture).Name, "$([IO.DirectoryInfo]::New($Parent).BaseName).strings.psd1");
+    return [xcrypt]::ValidadePsd1File($File)
+  }
+  static [bool] ValidadePsd1File([IO.FileInFo]$File, [bool]$throwOnFailure) {
+    $e = [IO.File]::Exists($File.FullName)
+    if (!$e -and $throwOnFailure) { throw [IO.FileNotFoundException]::new("File $($File.FullName) was not found. Make sure the module is Installed and try again") }
+    $v = $e -and ($File.Extension -eq ".psd1")
+    if (!$v -and $throwOnFailure) {
+      throw [System.ArgumentException]::new("File '$File' is not valid. Please provide a valid path/to/<modulename>.Strings.psd1", 'Path')
+    }
+    return $v
+  }
+  static [Object] ReadModuledata([string]$ModuleName) {
+    return [xcrypt]::ReadModuledata($ModuleName, '')
+  }
+  static [Object] ReadModuledata([string]$ModuleName, [string]$key) {
+    $m = (Get-Module $ModuleName -ListAvailable -Verbose:$false).ModuleBase
+    $f = [IO.FileInfo]::new([IO.Path]::Combine($m, "en-US", "$ModuleName.strings.psd1"))
+    [void][xcrypt]::ValidadePsd1File($f, $true)
+    $c = [IO.File]::ReadAllText($f.FullName)
+    if ([string]::IsNullOrWhiteSpace($c)) { throw [IO.InvalidDataException]::new("File $f") }
+    $r = [ScriptBlock]::Create("$c").Invoke()
+    if ($null -eq $r) { return $null }
+    return (![string]::IsNullOrWhiteSpace($key) ? $r.$key : $r)
   }
   static [void] ValidateCompression([string]$Compression) {
     if ($Compression -notin ([Enum]::GetNames('Compression' -as 'Type'))) { Throw [InvalidCastException]::new("The name '$Compression' is not a valid [Compression]`$typeName.") };
