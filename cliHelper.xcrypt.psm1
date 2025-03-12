@@ -221,7 +221,7 @@ class cPsObject : PsObject {
 #region    xcrypt
 # .SYNOPSIS
 #   xtended cryptography helper class
-class xcrypt {
+class xcrypt : PsModuleBase {
   static [string] $caller
   static [byte[]] $counter
   static [EncryptionScope] $Scope = 'User'
@@ -473,87 +473,10 @@ class xcrypt {
   }
   static [string] GetUniqueMachineId() {
     # get_product_uuid : Uses a cryptographic hash function (SHA-256) to generate a unique machine ID
-    $Id = [string]($Env:MachineId)
-    $vp = (Get-Variable VerbosePreference).Value
-    try {
-      Set-Variable VerbosePreference -Value $([System.Management.Automation.ActionPreference]::SilentlyContinue)
-      $sha256 = [SHA256]::Create()
-      $HostOS = [xcrypt]::Get_Host_Os()
-      if ($HostOS -eq "Windows") {
-        if ([string]::IsNullOrWhiteSpace($Id)) {
-          $machineId = Get-CimInstance -ClassName Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID
-          Set-Item -Path Env:\MachineId -Value $([convert]::ToBase64String($sha256.ComputeHash([Encoding]::UTF8.GetBytes($machineId))));
-        }
-        $Id = [string]($Env:MachineId)
-      } elseif ($HostOS -eq "Linux") {
-        # $Id = (sudo cat /sys/class/dmi/id/product_uuid).Trim() # sudo prompt is a nono
-        # Lets use mac addresses
-        $Id = ([string[]]$(ip link show | grep "link/ether" | awk '{print $2}') -join '-').Trim()
-        $Id = [convert]::ToBase64String($sha256.ComputeHash([Encoding]::UTF8.GetBytes($Id)))
-      } elseif ($HostOS -eq "macOS") {
-        $Id = (system_profiler SPHardwareDataType | Select-String "UUID").Line.Split(":")[1].Trim()
-        $Id = [convert]::ToBase64String($sha256.ComputeHash([Encoding]::UTF8.GetBytes($Id)))
-      } else {
-        throw "Error: HostOS = '$HostOS'. Could not determine the operating system."
-      }
-    } catch {
-      throw $_
-    } finally {
-      $sha256.Clear(); $sha256.Dispose()
-      Set-Variable VerbosePreference -Value $vp
-    }
-    return $Id
-  }
-  static [string] Get_Host_Os() {
-    # Todo: Should return one of these: [Enum]::GetNames([System.PlatformID])
-    return $(if ($(Get-Variable IsWindows -Value)) { "Windows" }elseif ($(Get-Variable IsLinux -Value)) { "Linux" }elseif ($(Get-Variable IsMacOS -Value)) { "macOS" }else { "UNKNOWN" })
-  }
-  static [IO.DirectoryInfo] Get_dataPath([string]$appName, [string]$SubdirName) {
-    $_Host_OS = [xcrypt]::Get_Host_Os()
-    $dataPath = if ($_Host_OS -eq 'Windows') {
-      [DirectoryInfo]::new([IO.Path]::Combine($Env:HOME, "AppData", "Roaming", $appName, $SubdirName))
-    } elseif ($_Host_OS -in ('Linux', 'MacOs')) {
-      [DirectoryInfo]::new([IO.Path]::Combine((($env:PSModulePath -split [IO.Path]::PathSeparator)[0] | Split-Path | Split-Path), $appName, $SubdirName))
-    } elseif ($_Host_OS -eq 'Unknown') {
-      try {
-        [DirectoryInfo]::new([IO.Path]::Combine((($env:PSModulePath -split [IO.Path]::PathSeparator)[0] | Split-Path | Split-Path), $appName, $SubdirName))
-      } catch {
-        Write-Warning "Could not resolve chat data path"
-        Write-Warning "HostOS = '$_Host_OS'. Could not resolve data path."
-        [Directory]::CreateTempSubdirectory(($SubdirName + 'Data-'))
-      }
-    } else {
-      throw [InvalidOperationException]::new('Could not resolve data path. Get_Host_OS FAILED!')
-    }
-    if (!$dataPath.Exists) { [xcrypt]::Create_Dir($dataPath) }
-    return $dataPath
-  }
-  static [void] Create_Dir([string]$Path) {
-    [xcrypt]::Create_Dir([DirectoryInfo]::new($Path))
-  }
-  static [void] Create_Dir([DirectoryInfo]$Path) {
-    [ValidateNotNullOrEmpty()][DirectoryInfo]$Path = $Path
-    $nF = @(); $p = $Path; while (!$p.Exists) { $nF += $p; $p = $p.Parent }
-    [Array]::Reverse($nF); $nF | ForEach-Object { $_.Create(); Write-Verbose "Created $_" }
-  }
-  [PSCustomObject] static Get_Ip_Info() {
-    $i = $null
-    try {
-      $i = $(& ([scriptblock]::Create($((Invoke-RestMethod -Verbose:$false -ea Ignore -SkipHttpErrorCheck -Method Get https://api.github.com/gists/d1985ebe22fe07cc191c9458b3a2bdbc).files.'IpInfo.ps1'.content) + ';[Ipinfo]::getInfo()')))
-    } catch {
-      $i = [PSCustomObject]@{
-        country_name = "US"
-        location     = [PSCustomObject]@{
-          geoname_id = "Ohio"
-        }
-        city         = "Florida"
-      }
-    }
-    return $i
+    return [xcrypt]::GetRuntimeUUID()
   }
   [securestring] static GetPassword() {
-    $ThrowOnFailure = $true
-    return [xcrypt]::GetPassword($ThrowOnFailure);
+    return [xcrypt]::GetPassword($true);
   }
   [securestring] static GetPassword([string]$Prompt) {
     return [xcrypt]::GetPassword($Prompt, $true)
@@ -575,40 +498,8 @@ class xcrypt {
       return $pswd;
     }
   }
-  static [bool] saveModuledata([string]$stringsKey, [Object]$value) {
-    return $null
-  }
-  static [bool] ValidadePsd1File([IO.FileInFo]$File) {
-    return [xcrypt]::ValidadePsd1File($File, $false)
-  }
-  static [bool] ValidadePsd1File([IO.DirectoryInfo]$Parent) {
-    $File = [IO.Path]::Combine($Parent, (Get-Culture).Name, "$([IO.DirectoryInfo]::New($Parent).BaseName).strings.psd1");
-    return [xcrypt]::ValidadePsd1File($File)
-  }
-  static [bool] ValidadePsd1File([IO.FileInFo]$File, [bool]$throwOnFailure) {
-    $e = [IO.File]::Exists($File.FullName)
-    if (!$e -and $throwOnFailure) { throw [IO.FileNotFoundException]::new("File $($File.FullName) was not found. Make sure the module is Installed and try again") }
-    $v = $e -and ($File.Extension -eq ".psd1")
-    if (!$v -and $throwOnFailure) {
-      throw [System.ArgumentException]::new("File '$File' is not valid. Please provide a valid path/to/<modulename>.Strings.psd1", 'Path')
-    }
-    return $v
-  }
-  static [Object] ReadModuledata([string]$ModuleName) {
-    return [xcrypt]::ReadModuledata($ModuleName, '')
-  }
-  static [Object] ReadModuledata([string]$ModuleName, [string]$key) {
-    $m = (Get-Module $ModuleName -ListAvailable -Verbose:$false).ModuleBase
-    $f = [IO.FileInfo]::new([IO.Path]::Combine($m, "en-US", "$ModuleName.strings.psd1"))
-    [void][xcrypt]::ValidadePsd1File($f, $true)
-    $c = [IO.File]::ReadAllText($f.FullName)
-    if ([string]::IsNullOrWhiteSpace($c)) { throw [IO.InvalidDataException]::new("File $f") }
-    $r = [ScriptBlock]::Create("$c").Invoke()
-    if ($null -eq $r) { return $null }
-    return (![string]::IsNullOrWhiteSpace($key) ? $r.$key : $r)
-  }
   static [void] ValidateCompression([string]$Compression) {
-    if ($Compression -notin ([Enum]::GetNames('Compression' -as 'Type'))) { Throw [InvalidCastException]::new("The name '$Compression' is not a valid [Compression]`$typeName.") };
+    if ($Compression -notin [Enum]::GetNames[Compression]()) { Throw [InvalidCastException]::new("The name '$Compression' is not a valid compression name. valid names are: $([string]::Join(', ', [Enum]::GetNames[Compression]()))") };
   }
 }
 #endregion xcrypt
