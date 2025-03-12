@@ -1140,7 +1140,7 @@ class CredentialManager {
     return $Credentials
   }
   [Psobject[]] static hidden get_StoredCreds() {
-    $_Host_OS = [xcrypt]::Get_Host_Os()
+    $_Host_OS = [xcrypt]::GetHostOs()
     if ($_Host_OS -in ('Linux', 'MacOs')) {
       throw [Exception]::new('UnsupportedPlatform: get_StoredCreds() works on Windows Only.')
     }
@@ -2240,7 +2240,7 @@ class X509 : xcrypt {
     if (!($KeyExportPolicy -as [KeyExportPolicy] -is 'KeyExportPolicy')) { throw [InvalidArgumentException]::New('[Microsoft.CertificateServices.Commands.KeyExportPolicy]$KeyExportPolicy') }
     if (!($KeyProtection -as [KeyProtection] -is 'KeyProtection')) { throw [InvalidArgumentException]::New("$KeyProtection is not a valid [Microsoft.CertificateServices.Commands.KeyProtection]. See [enum]::GetNames[KeyProtection]() for valid values") }
     if (!($keyUsage -as [KeyUsage] -is 'KeyUsage')) { throw [InvalidArgumentException]::New("$KeyUsage is not a valid X509KeyUsageFlag. See [enum]::GetNames[KeyUsage]() for valid values") }
-    if (![bool]("Microsoft.CertificateServices.Commands.KeyExportPolicy" -as [Type]) -and [xcrypt]::Get_Host_Os() -eq "Windows") {
+    if (![bool]("Microsoft.CertificateServices.Commands.KeyExportPolicy" -as [Type]) -and [xcrypt]::GetHostOs() -eq "Windows") {
       Write-Verbose "[+] Load all necessary assemblies." # By Creating a dumy cert then remove it. This loads all necessary assemblies to create certificates; It worked for me!
       $DummyName = 'dummy-' + [Guid]::NewGuid().Guid; $DummyCert = New-SelfSignedCertificate -Type Custom -Subject "CN=$DummyName" -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.2", "2.5.29.17={text}upn=dummy@contoso.com") -KeyExportPolicy NonExportable -KeyUsage None -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\CurrentUser\My";
       $DummyCert.Dispose(); Get-ChildItem "Cert:\CurrentUser\My" | Where-Object { $_.subject -eq "CN=$DummyName" } | Remove-Item
@@ -2305,7 +2305,7 @@ class X509 : xcrypt {
     $cert = [X509Certificate2]::new($certData, $Pin, $x509KeyStorageFlags)
     # TODO : test if this gives same result on windows:
     # if on Windows, Import the certificate from the byte array and return the imported certificate
-    # if ([X509]::Get_Host_Os() -eq "Windows") {[void]$xsig.Import($certData, $Pin, $x509KeyStorageFlags); $cert = $xsig }
+    # if ([X509]::GetHostOs() -eq "Windows") {[void]$xsig.Import($certData, $Pin, $x509KeyStorageFlags); $cert = $xsig }
 
     $store = [X509Store]::new([StoreLocation]::CurrentUser) # save the certificate to the personal store
     [void]$store.Open([OpenFlags]::ReadWrite)
